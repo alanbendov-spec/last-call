@@ -165,6 +165,7 @@ footer{color:var(--muted);font-size:13px;text-align:center}
 
 <script>
 (function(){
+  var MAIL_ENDPOINT="https://formsubmit.co/ajax/2407ddba03092e7c03292ef78fa3de27";
   var KC=["--k1","--k2","--k3","--k4","--k5","--k6"];
   var T={
   es:{m_b1:"Sofía, faltan diez minutos para salir.",m_b2:"Mateo, mochila y botella de agua: listo.",m_h:"Mañanas sin gritos",m_p:"El parlante lleva la cuenta. Tú haces las colaciones.",
@@ -227,22 +228,11 @@ footer{color:var(--muted);font-size:13px;text-align:center}
     AFTER.forEach(function(a){rows.push({t:a[1],k:a[0]})});return rows}
   function av(name,i){var c=(name||"?").trim().charAt(0).toUpperCase()||"?";return '<span class="av" style="background:var('+KC[i%6]+')">'+esc(c)+'</span>'}
 
-  /* audio */
-  var ac=null;
-  function ctx(){try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();if(ac.state==="suspended")ac.resume();return ac}catch(e){return null}}
-  function tone(f,t0,dur,type,vol){var a=ctx();if(!a)return;var o=a.createOscillator(),g=a.createGain();o.type=type||"sine";o.frequency.value=f;
-    g.gain.setValueAtTime(0.0001,a.currentTime+t0);g.gain.exponentialRampToValueAtTime(vol||0.3,a.currentTime+t0+0.02);g.gain.exponentialRampToValueAtTime(0.0001,a.currentTime+t0+dur);
-    o.connect(g);g.connect(a.destination);o.start(a.currentTime+t0);o.stop(a.currentTime+t0+dur+0.05)}
-  function chime(id){
-    if(id==="aeropuerto"){tone(783.99,0,0.7,"sine",.35);tone(587.33,0.45,1.1,"sine",.35);return 1.8}
-    if(id==="hospital"){[0,.28,.56].forEach(function(t){tone(1046.5,t,.18,"square",.12)});return .9}
-    if(id==="escuela"){for(var i=0;i<14;i++)tone(i%2?1180:900,i*.07,.07,"square",.1);return 1.1}
-    tone(523.25,0,.5,"triangle",.3);tone(659.25,.18,.5,"triangle",.3);tone(783.99,.36,.8,"triangle",.3);return 1.3}
-  function sampleText(){var o=(S.alang==="pt"||S.alang==="he")?SAMPLE_OTHER[S.alang]:T[S.alang].sample;return o[S.tone]}
-  function speak(text){try{var u=new SpeechSynthesisUtterance(text);u.lang=ALANGS.filter(function(x){return x.id===S.alang})[0].code;
-      u.rate=S.tone==="firme"?0.95:S.tone==="amable"?0.9:1.05;u.pitch=S.tone==="firme"?0.85:S.tone==="amable"?1.1:1.2;
-      window.speechSynthesis.cancel();window.speechSynthesis.speak(u)}catch(e){}}
-  function playDemo(){var d=chime(S.sound),nm=(S.kids[0]&&S.kids[0].name)||"Sofía";setTimeout(function(){speak(sampleText().replace("{n}",nm))},d*1000+150)}
+  /* audio: archivos reales (voz ElevenLabs + avisos pregrabados), sin sintetizador del navegador */
+  var cur=null;
+  function playMp3(url){return new Promise(function(res){try{if(cur){cur.pause()}var a=new Audio(url);cur=a;a.onended=res;a.onerror=res;var p=a.play();if(p&&p.catch)p.catch(res)}catch(e){res()}})}
+  function playChime(id){return playMp3("audio/chime-"+id+".mp3")}
+  function playDemo(lang){var l=(typeof lang==="string")?lang:S.alang;playChime(S.sound).then(function(){return playMp3("audio/"+l+"-"+S.tone+".mp3")})}
 
   /* static texts + hero */
   function applyStatic(){
@@ -254,7 +244,7 @@ footer{color:var(--muted);font-size:13px;text-align:center}
       return '<div class="r">'+(r[0]?av(r[0],ix):'<span class="av" style="background:var(--sun)">★</span>')+'<span class="tm">'+r[1]+'</span><span class="msg'+(last?' last':'')+'">'+esc(r[2])+(r[0]?'<small>'+esc(r[0])+'</small>':'')+'</span></div>'}).join("")}
   document.getElementById("l-es").onclick=function(){UI="es";applyStatic();render()};
   document.getElementById("l-en").onclick=function(){UI="en";applyStatic();render()};
-  document.getElementById("heroSound").onclick=playDemo;
+  document.getElementById("heroSound").onclick=function(){playDemo(UI)};
   document.getElementById("goWizard").onclick=function(){document.getElementById("wizard").scrollIntoView({behavior:"smooth"})};
 
   /* wizard */
@@ -304,8 +294,8 @@ footer{color:var(--muted);font-size:13px;text-align:center}
 
   function bind(){
     var q=function(s){return document.querySelector(s)};
-    Array.prototype.forEach.call(document.querySelectorAll(".opt[data-k]"),function(b){b.onclick=function(){S[b.dataset.k]=b.dataset.v;if(b.dataset.k==="sound")chime(S.sound);render()}});
-    if(q("#demo"))q("#demo").onclick=playDemo;
+    Array.prototype.forEach.call(document.querySelectorAll(".opt[data-k]"),function(b){b.onclick=function(){S[b.dataset.k]=b.dataset.v;if(b.dataset.k==="sound")playChime(S.sound);render()}});
+    if(q("#demo"))q("#demo").onclick=function(){playDemo()};
     if(q("#next"))q("#next").onclick=function(){if(!valid(S.step)){var f=document.querySelector("[data-f=name]");if(f)f.focus();return}go(S.step+1)};
     if(q("#back"))q("#back").onclick=function(){go(S.step-1)};
     Array.prototype.forEach.call(document.querySelectorAll("[data-f][data-i]"),function(i){i.oninput=function(){S.kids[+i.dataset.i][i.dataset.f]=i.value}});
@@ -331,9 +321,9 @@ footer{color:var(--muted);font-size:13px;text-align:center}
     err.textContent="";var b=document.getElementById("send");b.disabled=true;b.textContent=L().sending;
     S.summary=summary();var id="r"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);var doc=JSON.parse(S.summary);doc.created=new Date().toISOString();
     var use=(window.claude&&window.claude.use)?window.claude.use:null;
-    Promise.all([use?use("db"):null,use?use("user"):null]).then(function(r){
-      var db=r[0],u=r[1];if(!db||!u)throw new Error("no-db");
-      return u.id().then(function(uid){return db.doc("signups/"+uid+"/items/"+id).set(doc)})}).then(function(){S.sent="ok";render()}).catch(function(){S.sent="manual";render()})}
+    var viaMail=fetch(MAIL_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json",Accept:"application/json"},body:JSON.stringify({_subject:"Last Call: nueva reserva ("+em+")",_template:"table",_captcha:"false",email:em,resumen:S.summary})}).then(function(r){if(!r.ok)throw new Error("mail")});
+    var viaDb=use?Promise.all([use("db"),use("user")]).then(function(r){var db=r[0],u=r[1];if(!db||!u)throw new Error("no-db");return u.id().then(function(uid){return db.doc("signups/"+uid+"/items/"+id).set(doc)})}):Promise.reject(new Error("no-db"));
+    Promise.all([viaMail.then(function(){return true},function(){return false}),viaDb.then(function(){return true},function(){return false})]).then(function(r){S.sent=(r[0]||r[1])?"ok":"manual";render()})}
   function doneHTML(){
     var l=L(),h;
     if(S.sent==="manual")h='<div class="center"><h2>'+l.almost+'</h2><p style="color:var(--muted);margin-top:8px">'+l.almostsub+'</p></div><textarea class="copy" id="sum" readonly>'+esc(S.summary)+'</textarea><div style="margin-top:10px"><button class="btn small" id="copy">'+l.copy+'</button> <span class="ok" id="cm"></span></div>';
